@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Freshy App Store</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f0fdf4; }
+        .fresh-gradient { background: linear-gradient(135deg, #059669 0%, #10b981 100%); }
+        
+        /* Centered App Icon Styling */
+        .icon-wrapper { display: flex; justify-content: center; align-items: center; margin-bottom: 1.5rem; position: relative; }
+        .app-icon { width: 95px; height: 95px; border-radius: 22px; box-shadow: 0 10px 20px rgba(5, 150, 105, 0.2); border: 4px solid white; }
+        
+        /* Improved Share Button & Menu */
+        .share-container { position: absolute; top: 0; right: 0; }
+        .share-btn { background: #d1fae5; color: #065f46; width: 36px; height: 36px; border-radius: 12px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .share-btn:active { transform: scale(0.9); }
+        .share-menu { 
+            display: none; position: absolute; right: 0; top: 45px; width: 170px; 
+            background: white; border-radius: 16px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); 
+            border: 1px solid #e2e8f0; z-index: 100; overflow: hidden;
+        }
+        .share-menu.active { display: block; }
+        .share-item { width: 100%; text-align: left; padding: 12px 16px; font-size: 13px; font-weight: 700; color: #1e293b; border-bottom: 1px solid #f1f5f9; }
+        .share-item:last-child { border-bottom: none; }
+        .share-item:hover { background: #f0fdf4; color: #059669; }
+
+        /* Modal Overlay */
+        .modal { display: none; background: rgba(6, 78, 59, 0.4); backdrop-filter: blur(10px); }
+        .modal.active { display: flex; }
+    </style>
+</head>
+<body onload="initApp()">
+
+    <header class="fresh-gradient pb-32 pt-10 px-4 shadow-2xl relative text-white">
+        <div class="container mx-auto max-w-5xl">
+            <div class="flex justify-between items-center mb-12">
+                <div class="flex items-center gap-3">
+                    <div class="bg-white p-2 rounded-xl shadow-lg"><i class="fas fa-leaf text-emerald-600 text-xl"></i></div>
+                    <span class="text-2xl font-black italic tracking-tight">Freshy</span>
+                </div>
+                <div id="authSection">
+                    <button onclick="toggleAuthModal()" class="bg-white text-emerald-700 px-8 py-2.5 rounded-full font-extrabold text-sm shadow-xl hover:bg-emerald-50">Login</button>
+                </div>
+            </div>
+            
+            <div class="text-center">
+                <h1 class="text-4xl font-black mb-8 italic drop-shadow-md">Freshy <span class="text-emerald-200">App Store</span></h1>
+                <div class="max-w-xl mx-auto flex bg-white rounded-2xl shadow-2xl overflow-hidden p-2 border-4 border-emerald-400/20">
+                    <input id="searchInput" type="text" placeholder="Search for apps..." class="w-full px-6 py-3 text-gray-800 outline-none font-semibold">
+                    <button onclick="searchApps()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-8 rounded-xl font-bold transition-colors">Find</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto -mt-16 px-4 pb-24 z-20 relative">
+        <div id="loading" class="hidden text-center py-20"><div class="inline-block w-12 h-12 border-4 border-white border-t-emerald-500 rounded-full animate-spin"></div></div>
+        <div id="resultsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"></div>
+    </main>
+
+    <div id="authModal" class="modal fixed inset-0 z-[100] items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-[2.5rem] p-10 shadow-2xl relative text-center">
+            <button onclick="toggleAuthModal()" class="absolute top-6 right-6 text-gray-400 hover:text-emerald-600"><i class="fas fa-times text-xl"></i></button>
+            <div class="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <i class="fas fa-user-check text-emerald-600 text-2xl"></i>
+            </div>
+            <h2 class="text-2xl font-black text-gray-800 mb-2 italic">Freshy Member</h2>
+            <p class="text-gray-500 mb-8 text-sm font-medium">Get a magic login link via email</p>
+            <input id="authEmail" type="email" placeholder="Enter your email" class="w-full bg-emerald-50 border-2 border-emerald-100 rounded-2xl px-4 py-4 mb-4 outline-none text-center font-bold text-emerald-900 focus:border-emerald-500 transition-all">
+            <button onclick="handleLogin()" id="loginBtn" class="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-emerald-200 hover:bg-emerald-700 active:scale-95 transition-all">Send Link 🪄</button>
+            <p id="authMsg" class="mt-6 text-sm font-bold text-emerald-600"></p>
+        </div>
+    </div>
+
+    <script>
+        // CONFIGURATION
+        const SUPABASE_URL = 'https://zudffpjqzycfbcbsdkdf.supabase.co';
+        const SUPABASE_KEY = 'EyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1ZGZmcGpxenljZmNic2Rza2RmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExNjM1MzAsImV4cCI6MjA4NjczOTUzMH0.V2j9IfmWddH1StSQVXfPsMmy8-2nxMDsmnpfCvN0tKo';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        async function initApp() {
+            checkUser();
+            renderApps(`https://itunes.apple.com/search?term=apps&entity=software&limit=9`, false);
+        }
+
+        async function checkUser() {
+            const { data: { user } } = await supabaseClient.auth.getUser();
+            if (user) {
+                document.getElementById('authSection').innerHTML = `
+                    <button onclick="handleLogout()" class="bg-white text-emerald-700 px-5 py-2 rounded-full font-black text-xs shadow-lg uppercase tracking-wider">Logout</button>
+                `;
+            }
+        }
+
+        async function handleLogin() {
+            const email = document.getElementById('authEmail').value;
+            const btn = document.getElementById('loginBtn');
+            if(!email) return;
+            btn.innerText = "Sending...";
+            const { error } = await supabaseClient.auth.signInWithOtp({ 
+                email,
+                options: { emailRedirectTo: 'https://freshy-store.vercel.app' }
+            });
+            if (error) { document.getElementById('authMsg').innerText = "Error: " + error.message; } 
+            else { document.getElementById('authMsg').innerText = "Success! Check your email 📧"; }
+            btn.innerText = "Send Link 🪄";
+        }
+
+        async function handleLogout() { await supabaseClient.auth.signOut(); window.location.reload(); }
+        function toggleAuthModal() { document.getElementById('authModal').classList.toggle('active'); }
+        
+        async function searchApps() {
+            const q = document.getElementById('searchInput').value;
+            if(!q) return;
+            renderApps(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=software&limit=12`, false);
+        }
+
+        async function renderApps(url, isRSS) {
+            const grid = document.getElementById('resultsGrid');
+            const loader = document.getElementById('loading');
+            grid.innerHTML = ''; loader.classList.remove('hidden');
+            
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                loader.classList.add('hidden');
+                const apps = isRSS ? data.feed.entry : data.results;
+
+                apps.forEach((app, i) => {
+                    const name = isRSS ? app['im:name'].label : app.trackName;
+                    const icon = isRSS ? app['im:image'][2].label : app.artworkUrl100;
+                    const appleUrl = isRSS ? app.link.attributes.href : app.trackViewUrl;
+                    const googleUrl = `https://play.google.com/store/search?q=${encodeURIComponent(name)}&c=apps`;
+
+                    const card = document.createElement('div');
+                    card.className = "bg-white rounded-[2.5rem] p-8 shadow-xl flex flex-col relative border border-emerald-50 transition-all hover:shadow-2xl hover:-translate-y-1";
+                    card.innerHTML = `
+                        <div class="icon-wrapper">
+                            <img src="${icon}" class="app-icon">
+                            <div class="share-container">
+                                <button onclick="toggleShare(event, ${i})" class="share-btn shadow-sm"><i class="fas fa-share-nodes"></i></button>
+                                <div id="menu-${i}" class="share-menu">
+                                    <button class="share-item" onclick="copy('${appleUrl}')"><i class="fab fa-apple mr-2"></i> iOS Link</button>
+                                    <button class="share-item" onclick="copy('${googleUrl}')"><i class="fab fa-google-play mr-2"></i> Android Link</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-center mb-8">
+                            <h3 class="font-extrabold text-gray-800 text-lg truncate px-2">${name}</h3>
+                        </div>
+                        <div class="grid grid-cols-1 gap-3">
+                            <a href="${appleUrl}" target="_blank" class="flex items-center justify-center gap-2 bg-slate-900 text-white py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest"><i class="fab fa-apple text-sm"></i> App Store</a>
+                            <a href="${googleUrl}" target="_blank" class="flex items-center justify-center gap-2 bg-emerald-50 border-2 border-emerald-100 text-emerald-700 py-3 rounded-2xl text-xs font-extrabold uppercase tracking-widest hover:bg-emerald-100 transition-colors"><i class="fab fa-google-play text-xs"></i> Google Play</a>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            } catch (e) { 
+                loader.classList.add('hidden');
+                grid.innerHTML = '<p class="text-emerald-900 font-bold text-center col-span-full">Something went wrong. Please refresh!</p>';
+            }
+        }
+
+        function toggleShare(e, i) {
+            e.stopPropagation();
+            const m = document.getElementById(`menu-${i}`);
+            const isActive = m.classList.contains('active');
+            document.querySelectorAll('.share-menu').forEach(menu => menu.classList.remove('active'));
+            if(!isActive) m.classList.add('active');
+        }
+
+        function copy(url) { 
+            navigator.clipboard.writeText(url); 
+            const alertBox = document.createElement('div');
+            alertBox.className = "fixed bottom-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-full font-bold shadow-2xl z-[200] animate-bounce";
+            alertBox.innerText = "Link Copied! 🥬";
+            document.body.appendChild(alertBox);
+            setTimeout(() => alertBox.remove(), 2000);
+        }
+        
+        window.onclick = () => document.querySelectorAll('.share-menu').forEach(m => m.classList.remove('active'));
+    </script>
+</body>
+</html>
