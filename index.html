@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Freshy App Store</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f0fdf4; }
+        .fresh-gradient { background: linear-gradient(135deg, #059669 0%, #10b981 100%); }
+        .app-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: 1px solid #d1fae5; }
+        .app-card:hover { transform: translateY(-5px); box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
+        .app-icon { width: 90px; height: 90px; border-radius: 22px; object-fit: cover; border: 3px solid white; box-shadow: 0 10px 15px rgba(0,0,0,0.05); }
+        .modal { display: none; background: rgba(6, 78, 59, 0.4); backdrop-filter: blur(8px); }
+        .modal.active { display: flex; }
+        .fav-heart { transition: transform 0.2s; cursor: pointer; }
+        .fav-heart:active { transform: scale(1.5); }
+        .share-menu { display: none; position: absolute; right: 0; top: 40px; width: 160px; background: white; border-radius: 12px; box-shadow: 0 10px 15px rgba(0,0,0,0.1); z-index: 50; }
+        .share-menu.active { display: block; }
+    </style>
+</head>
+<body onload="initApp()">
+
+    <header class="fresh-gradient pb-24 pt-8 px-4 relative text-white">
+        <div class="container mx-auto max-w-5xl">
+            <div class="flex justify-between items-center mb-10">
+                <div class="flex items-center gap-2">
+                    <div class="bg-white p-2 rounded-xl"><i class="fas fa-leaf text-emerald-600 text-lg"></i></div>
+                    <span class="text-xl font-black italic tracking-tighter">FRESHY</span>
+                </div>
+                <div id="authSection">
+                    <button onclick="toggleAuthModal()" class="bg-white text-emerald-700 px-6 py-2 rounded-full font-bold text-sm shadow-lg">Login</button>
+                </div>
+            </div>
+            
+            <div class="text-center">
+                <h1 class="text-3xl font-black mb-6">Freshy <span class="opacity-80">App Store</span></h1>
+                <div class="max-w-md mx-auto flex bg-white rounded-2xl shadow-xl p-1.5">
+                    <input id="searchInput" type="text" placeholder="Search apps..." class="w-full px-4 py-2 text-gray-800 outline-none font-medium">
+                    <button onclick="searchApps()" class="bg-emerald-600 text-white px-6 rounded-xl font-bold hover:bg-emerald-700">Find</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto -mt-10 px-4 pb-20 relative z-10">
+        <div id="loading" class="hidden text-center py-10"><div class="inline-block w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div></div>
+        <div id="resultsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+    </main>
+
+    <div id="authModal" class="modal fixed inset-0 z-[100] items-center justify-center p-4">
+        <div class="bg-white w-full max-w-xs rounded-[2rem] p-8 shadow-2xl relative text-center">
+            <button onclick="toggleAuthModal()" class="absolute top-4 right-4 text-gray-400"><i class="fas fa-times"></i></button>
+            <h2 class="text-xl font-black text-gray-800 mb-6">Join Freshy</h2>
+            
+            <button onclick="handleGoogleLogin()" class="w-full flex items-center justify-center gap-2 bg-white border border-gray-200 py-3 rounded-xl font-bold text-gray-600 mb-4 hover:bg-gray-50">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5"> Google
+            </button>
+
+            <div class="flex items-center gap-2 mb-4 opacity-30"><hr class="flex-grow"> <span class="text-[10px] font-bold">OR</span> <hr class="flex-grow"></div>
+
+            <input id="authEmail" type="email" placeholder="Email Address" class="w-full bg-gray-50 border-0 rounded-xl px-4 py-3 mb-3 outline-none text-center font-bold text-sm">
+            <button onclick="handleEmailLogin()" id="loginBtn" class="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold shadow-md">Get Magic Link</button>
+            <p id="authMsg" class="mt-4 text-[10px] font-bold text-emerald-600"></p>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDN39buxTWf_p2MLNMvSZwNwP8ivlhRo7M",
+            authDomain: "freshy-store-123.firebaseapp.com",
+            projectId: "freshy-store-123",
+            storageBucket: "freshy-store-123.firebasestorage.app",
+            messagingSenderId: "686226406887",
+            appId: "1:686226406887:web:403fcccb78540a5de0d142"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        let userFavorites = [];
+
+        function initApp() {
+            auth.onAuthStateChanged(async user => {
+                const authSection = document.getElementById('authSection');
+                if (user) {
+                    authSection.innerHTML = `
+                        <div class="flex items-center gap-2">
+                            <img src="${user.photoURL || 'https://via.placeholder.com/40'}" class="w-8 h-8 rounded-full border-2 border-white">
+                            <button onclick="handleLogout()" class="text-white font-black text-[10px] uppercase opacity-80">Logout</button>
+                        </div>`;
+                    // Load User Favorites
+                    const snapshot = await db.collection('users').doc(user.uid).collection('favorites').get();
+                    userFavorites = snapshot.docs.map(doc => doc.id);
+                } else {
+                    authSection.innerHTML = `<button onclick="toggleAuthModal()" class="bg-white text-emerald-700 px-6 py-2 rounded-full font-bold text-sm">Login</button>`;
+                    userFavorites = [];
+                }
+                searchApps(); // Refresh view
+            });
+        }
+
+        // --- AUTH LOGIC ---
+        async function handleGoogleLogin() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            try { await auth.signInWithPopup(provider); toggleAuthModal(); } catch (e) { alert("Login failed"); }
+        }
+
+        async function handleEmailLogin() {
+            const email = document.getElementById('authEmail').value;
+            const settings = { url: window.location.href, handleCodeInApp: true };
+            try {
+                await auth.sendSignInLinkToEmail(email, settings);
+                window.localStorage.setItem('emailForSignIn', email);
+                document.getElementById('authMsg').innerText = "Check your email! 📧";
+            } catch (e) { document.getElementById('authMsg').innerText = "Error sending link"; }
+        }
+
+        function handleLogout() { auth.signOut().then(() => window.location.reload()); }
+        function toggleAuthModal() { document.getElementById('authModal').classList.toggle('active'); }
+
+        // --- FAVORITES LOGIC ---
+        async function toggleFavorite(appId, name, icon) {
+            const user = auth.currentUser;
+            if (!user) { toggleAuthModal(); return; }
+
+            const favRef = db.collection('users').doc(user.uid).collection('favorites').doc(appId.toString());
+            const heart = document.getElementById(`heart-${appId}`);
+
+            if (userFavorites.includes(appId.toString())) {
+                await favRef.delete();
+                userFavorites = userFavorites.filter(id => id !== appId.toString());
+                heart.classList.replace('fas', 'far');
+                heart.style.color = '#94a3b8';
+            } else {
+                await favRef.set({ name, icon, date: new Date() });
+                userFavorites.push(appId.toString());
+                heart.classList.replace('far', 'fas');
+                heart.style.color = '#10b981';
+            }
+        }
+
+        // --- SEARCH & RENDER ---
+        async function searchApps() {
+            const q = document.getElementById('searchInput').value || 'apps';
+            const grid = document.getElementById('resultsGrid');
+            const loader = document.getElementById('loading');
+            grid.innerHTML = ''; loader.classList.remove('hidden');
+
+            try {
+                const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=software&limit=12`);
+                const data = await res.json();
+                loader.classList.add('hidden');
+
+                data.results.forEach((app, i) => {
+                    const isFav = userFavorites.includes(app.trackId.toString());
+                    const card = document.createElement('div');
+                    card.className = "app-card bg-white rounded-[2rem] p-6 flex flex-col relative";
+                    card.innerHTML = `
+                        <div class="absolute top-5 left-5 z-20">
+                            <i id="heart-${app.trackId}" 
+                               onclick="toggleFavorite('${app.trackId}', '${app.trackName.replace(/'/g, "")}', '${app.artworkUrl100}')" 
+                               class="${isFav ? 'fas' : 'far'} fa-heart fav-heart text-xl" 
+                               style="color: ${isFav ? '#10b981' : '#94a3b8'}"></i>
+                        </div>
+                        <div class="flex justify-center mb-6 relative">
+                            <img src="${app.artworkUrl100}" class="app-icon">
+                            <div class="absolute -right-2 top-0">
+                                <button onclick="toggleShare(event, ${i})" class="w-8 h-8 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center text-xs shadow-sm"><i class="fas fa-share-alt"></i></button>
+                                <div id="menu-${i}" class="share-menu border p-2">
+                                    <button class="w-full text-left text-[10px] font-bold p-2 border-b" onclick="copy('${app.trackViewUrl}')">Copy Link</button>
+                                    <button class="w-full text-left text-[10px] font-bold p-2" onclick="window.open('${app.trackViewUrl}')">Open Store</button>
+                                </div>
+                            </div>
+                        </div>
+                        <h3 class="font-bold text-gray-800 text-center mb-6 truncate text-sm">${app.trackName}</h3>
+                        <div class="grid gap-2">
+                            <a href="${app.trackViewUrl}" target="_blank" class="bg-gray-900 text-white py-3 rounded-xl text-[10px] font-black uppercase text-center tracking-widest">Get App</a>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            } catch (e) { loader.classList.add('hidden'); }
+        }
+
+        function toggleShare(e, i) {
+            e.stopPropagation();
+            const m = document.getElementById(`menu-${i}`);
+            document.querySelectorAll('.share-menu').forEach(menu => menu !== m && menu.classList.remove('active'));
+            m.classList.toggle('active');
+        }
+
+        function copy(url) { navigator.clipboard.writeText(url); alert("Link Copied! 🥬"); }
+        window.onclick = () => document.querySelectorAll('.share-menu').forEach(m => m.classList.remove('active'));
+    </script>
+</body>
+</html>
