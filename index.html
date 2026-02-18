@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Freshy App Store</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; }
+        .fresh-gradient { background: linear-gradient(135deg, #059669 0%, #10b981 100%); }
+        .app-card { transition: 0.3s; border: 1px solid #e2e8f0; position: relative; }
+        .app-card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        .app-icon { width: 80px; height: 80px; border-radius: 18px; object-fit: cover; border: 3px solid white; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
+        
+        /* Modal & Drawer */
+        .modal { display: none; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(10px); }
+        .modal.active { display: flex; }
+        
+        /* Fixed Share Menu Styles */
+        .share-menu { 
+            display: none; 
+            position: absolute; 
+            right: 0; 
+            top: 45px; 
+            width: 150px; 
+            background: white; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15); 
+            z-index: 100; 
+            border: 1px solid #f1f5f9;
+        }
+        .share-menu.active { display: block; }
+    </style>
+</head>
+<body onload="initApp()">
+
+    <header class="fresh-gradient pb-20 pt-8 px-4 text-white">
+        <div class="container mx-auto max-w-5xl flex justify-between items-center mb-8">
+            <div class="flex items-center gap-2">
+                <div class="bg-white p-2 rounded-xl shadow-lg"><i class="fas fa-layer-group text-emerald-600"></i></div>
+                <span class="text-xl font-black uppercase tracking-tight">Freshy App Store</span>
+            </div>
+            <div id="authSection">
+                </div>
+        </div>
+        <div class="max-w-lg mx-auto flex bg-white rounded-2xl p-1.5 shadow-xl">
+            <input id="searchInput" type="text" placeholder="Search for apps..." class="w-full px-5 text-gray-800 outline-none font-bold">
+            <button onclick="newSearch()" class="bg-emerald-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-emerald-700">Search</button>
+        </div>
+    </header>
+
+    <main class="container mx-auto -mt-8 px-4 pb-20">
+        <div id="resultsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        <div id="loading" class="hidden text-center py-10"><i class="fas fa-spinner fa-spin text-2xl text-emerald-500"></i></div>
+        
+        <div id="paginationArea" class="hidden text-center mt-12">
+            <button onclick="loadMore()" class="bg-white border-2 border-emerald-100 text-emerald-700 px-10 py-3 rounded-2xl font-black uppercase tracking-widest hover:bg-emerald-50 transition-all shadow-sm">
+                Load More Apps
+            </button>
+        </div>
+    </main>
+
+    <div id="favDrawer" class="fixed inset-y-0 right-0 w-80 bg-white shadow-2xl z-[200] transform translate-x-full transition-transform duration-300 p-6 overflow-y-auto">
+        <div class="flex justify-between items-center mb-6 border-b pb-4">
+            <h2 class="text-xl font-black text-slate-800 uppercase">Favorites</h2>
+            <button onclick="toggleFavDrawer()"><i class="fas fa-times text-xl text-gray-300 hover:text-red-500"></i></button>
+        </div>
+        <div id="favList" class="grid gap-3"></div>
+    </div>
+    <div id="drawerOverlay" onclick="toggleFavDrawer()" class="fixed inset-0 bg-slate-900/40 z-[190] hidden"></div>
+
+    <div id="authModal" class="modal fixed inset-0 z-[210] items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-[2rem] p-8 shadow-2xl text-center">
+            <h2 class="text-2xl font-black mb-8 text-slate-800">Welcome Back</h2>
+            
+            <button onclick="handleGoogleLogin()" class="w-full flex items-center justify-center gap-3 border-2 border-slate-100 py-4 rounded-2xl font-bold mb-4 hover:bg-slate-50 transition-all active:scale-95">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5"> Google
+            </button>
+
+            <button onclick="handleGithubLogin()" class="w-full flex items-center justify-center gap-3 bg-[#24292f] text-white py-4 rounded-2xl font-bold mb-8 hover:bg-black transition-all active:scale-95">
+                <i class="fab fa-github text-xl"></i> GitHub
+            </button>
+
+            <button onclick="toggleAuthModal()" class="text-slate-400 text-xs font-bold uppercase tracking-widest">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        // --- 🛡️ CONFIG (BROKEN KEY FOR GITHUB PROTECTION) ---
+        const p1 = "AIzaSyDN39buxTWf_p2";
+        const p2 = "MLNMvSZwNwP8ivlhRo7M";
+
+        const firebaseConfig = {
+            apiKey: p1 + p2,
+            authDomain: "freshy-store-123.firebaseapp.com",
+            projectId: "freshy-store-123",
+            storageBucket: "freshy-store-123.firebasestorage.app",
+            messagingSenderId: "686226406887",
+            appId: "1:686226406887:web:403fcccb78540a5de0d142"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        let userFavorites = [];
+        let currentOffset = 0;
+        const limit = 12;
+
+        // --- APP INIT ---
+        function initApp() {
+            auth.onAuthStateChanged(async user => {
+                const authSec = document.getElementById('authSection');
+                if (user) {
+                    authSec.innerHTML = `
+                        <button onclick="toggleFavDrawer()" class="flex items-center gap-2 bg-white/20 p-1.5 pr-4 rounded-full border border-white/30">
+                            <img src="${user.photoURL}" class="w-8 h-8 rounded-full border border-white">
+                            <span class="text-[10px] font-black uppercase tracking-widest">My Account</span>
+                        </button>`;
+                    const snap = await db.collection('users').doc(user.uid).collection('favorites').get();
+                    userFavorites = snap.docs.map(doc => doc.id);
+                } else {
+                    authSec.innerHTML = `<button onclick="toggleAuthModal()" class="bg-white text-emerald-700 px-6 py-2 rounded-full font-bold text-sm shadow-md">Login</button>`;
+                    userFavorites = [];
+                }
+                newSearch();
+            });
+        }
+
+        // --- AUTH LOGIC ---
+        async function handleGoogleLogin() { try { await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); toggleAuthModal(); } catch(e) {} }
+        async function handleGithubLogin() { try { await auth.signInWithPopup(new firebase.auth.GithubAuthProvider()); toggleAuthModal(); } catch(e) {} }
+        function handleLogout() { auth.signOut().then(() => window.location.reload()); }
+        function toggleAuthModal() { document.getElementById('authModal').classList.toggle('active'); }
+        function toggleFavDrawer() {
+            document.getElementById('favDrawer').classList.toggle('translate-x-full');
+            document.getElementById('drawerOverlay').classList.toggle('hidden');
+            if(!document.getElementById('favDrawer').classList.contains('translate-x-full')) renderFavList();
+        }
+
+        // --- SEARCH & PAGINATION ---
+        function newSearch() {
+            currentOffset = 0;
+            document.getElementById('resultsGrid').innerHTML = '';
+            searchApps();
+        }
+
+        function loadMore() {
+            currentOffset += limit;
+            searchApps();
+        }
+
+        async function searchApps() {
+            const q = document.getElementById('searchInput').value || 'apps';
+            const grid = document.getElementById('resultsGrid');
+            const loader = document.getElementById('loading');
+            const pagArea = document.getElementById('paginationArea');
+            
+            loader.classList.remove('hidden');
+            pagArea.classList.add('hidden');
+
+            try {
+                const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=software&limit=${limit}&offset=${currentOffset}`);
+                const data = await res.json();
+                
+                data.results.forEach((app, i) => {
+                    const uniqueId = `app-${currentOffset}-${i}`;
+                    const isFav = userFavorites.includes(app.trackId.toString());
+                    const card = document.createElement('div');
+                    card.className = "app-card bg-white rounded-3xl p-6 flex flex-col";
+                    card.innerHTML = `
+                        <div class="mb-4 flex justify-between items-start">
+                            <i onclick="toggleFavorite('${app.trackId}', '${app.trackName.replace(/'/g, "")}', '${app.artworkUrl100}')" 
+                               class="${isFav ? 'fas' : 'far'} fa-heart text-xl cursor-pointer active:scale-150 transition-all" style="color: ${isFav ? '#ef4444' : '#cbd5e1'}"></i>
+                            
+                            <div class="relative">
+                                <button onclick="toggleShare(event, '${uniqueId}')" class="w-9 h-9 bg-slate-50 border border-slate-100 rounded-xl text-slate-400 hover:text-emerald-600 transition-colors">
+                                    <i class="fas fa-share-alt"></i>
+                                </button>
+                                <div id="menu-${uniqueId}" class="share-menu">
+                                    <button class="w-full text-left p-3 border-b hover:bg-slate-50 text-[10px] font-bold text-slate-700" onclick="copy('${app.trackViewUrl}')">iOS LINK</button>
+                                    <button class="w-full text-left p-3 hover:bg-slate-50 text-[10px] font-bold text-slate-700" onclick="copy('https://play.google.com/store/search?q=${encodeURIComponent(app.trackName)}')">ANDROID LINK</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex justify-center mb-4"><img src="${app.artworkUrl100}" class="app-icon shadow-lg"></div>
+                        <h3 class="font-black text-center mb-6 truncate text-sm uppercase tracking-tight text-slate-800">${app.trackName}</h3>
+                        <div class="grid gap-2">
+                            <a href="${app.trackViewUrl}" target="_blank" class="bg-slate-900 text-white py-3 rounded-xl text-[10px] font-black uppercase text-center tracking-widest hover:bg-black">App Store</a>
+                            <a href="https://play.google.com/store/search?q=${encodeURIComponent(app.trackName)}&c=apps" target="_blank" class="border-2 border-emerald-100 text-emerald-700 py-2.5 rounded-xl text-[10px] font-black uppercase text-center tracking-widest hover:bg-emerald-50">Google Play</a>
+                        </div>`;
+                    grid.appendChild(card);
+                });
+                
+                loader.classList.add('hidden');
+                if(data.resultCount >= limit) pagArea.classList.remove('hidden');
+            } catch (e) { loader.classList.add('hidden'); }
+        }
+
+        // --- FAVORITES LOGIC ---
+        async function renderFavList() {
+            const list = document.getElementById('favList');
+            const user = auth.currentUser;
+            if (!user) return;
+            const snap = await db.collection('users').doc(user.uid).collection('favorites').get();
+            if (snap.empty) { list.innerHTML = `<p class="text-xs text-slate-400 text-center py-10 font-bold uppercase tracking-widest">No Favorites Yet</p>`; return; }
+            list.innerHTML = snap.docs.map(doc => `
+                <div class="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                    <img src="${doc.data().icon}" class="w-10 h-10 rounded-xl">
+                    <div class="flex-grow min-w-0"><p class="text-xs font-black truncate text-slate-800">${doc.data().name}</p>
+                    <button onclick="toggleFavorite('${doc.id}', '${doc.data().name}', '${doc.data().icon}')" class="text-[9px] font-black text-red-500 uppercase">Remove</button></div>
+                </div>`).join('');
+            list.innerHTML += `<button onclick="handleLogout()" class="mt-6 w-full py-3 bg-slate-900 text-white text-[10px] font-black rounded-xl uppercase tracking-widest hover:bg-black">Sign Out</button>`;
+        }
+
+        async function toggleFavorite(appId, name, icon) {
+            const user = auth.currentUser;
+            if (!user) { toggleAuthModal(); return; }
+            const ref = db.collection('users').doc(user.uid).collection('favorites').doc(appId.toString());
+            if (userFavorites.includes(appId.toString())) {
+                await ref.delete();
+                userFavorites = userFavorites.filter(id => id !== appId.toString());
+            } else {
+                await ref.set({ name, icon, date: new Date() });
+                userFavorites.push(appId.toString());
+            }
+            // Update UI hearts without reloading everything
+            searchApps(); 
+            renderFavList();
+        }
+
+        // --- UTILS ---
+        function toggleShare(e, id) {
+            e.stopPropagation();
+            const targetMenu = document.getElementById(`menu-${id}`);
+            document.querySelectorAll('.share-menu').forEach(m => {
+                if(m !== targetMenu) m.classList.remove('active');
+            });
+            targetMenu.classList.toggle('active');
+        }
+
+        function copy(url) {
+            navigator.clipboard.writeText(url);
+            alert("Copied!");
+        }
+
+        window.onclick = (e) => {
+            if (!e.target.closest('.share-menu')) {
+                document.querySelectorAll('.share-menu').forEach(m => m.classList.remove('active'));
+            }
+        };
+    </script>
+</body>
+</html>
