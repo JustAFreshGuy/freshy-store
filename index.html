@@ -47,18 +47,25 @@
 
     <button id="scrollTopBtn" onclick="window.scrollTo({top:0, behavior:'smooth'})" class="fixed bottom-8 right-8 w-14 h-14 bg-emerald-600 text-white rounded-2xl shadow-2xl flex items-center justify-center translate-y-20 opacity-0 z-[150] transition-all duration-300"><i class="fas fa-arrow-up"></i></button>
 
-    <div id="authModal" class="modal">
-        <div class="bg-white w-full max-w-sm rounded-[2rem] p-8 text-center">
-            <h2 class="text-2xl font-black mb-8 text-slate-800">Login</h2>
-            <button onclick="login('google')" class="w-full flex items-center justify-center gap-3 border-2 border-slate-100 py-4 rounded-2xl font-bold mb-4">
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5"> Google
-            </button>
-            <button onclick="login('github')" class="w-full flex items-center justify-center gap-3 bg-[#24292f] text-white py-4 rounded-2xl font-bold mb-8">
-                <i class="fab fa-github text-xl"></i> GitHub
-            </button>
-            <button onclick="toggleAuthModal()" class="text-slate-400 text-xs font-bold uppercase">Cancel</button>
-        </div>
+    <<div id="authModal" class="modal">
+    <div class="bg-white w-full max-w-sm rounded-[2rem] p-8 text-center shadow-2xl">
+        <h2 class="text-2xl font-black mb-6 text-slate-800 uppercase tracking-tight">Join Freshy</h2>
+        
+        <button onclick="login('google')" class="w-full flex items-center justify-center gap-3 border-2 border-slate-100 py-4 rounded-2xl font-bold mb-3 hover:bg-slate-50 active:scale-95 transition-all">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5"> Google
+        </button>
+
+        <button onclick="login('discord')" class="w-full flex items-center justify-center gap-3 bg-[#5865F2] text-white py-4 rounded-2xl font-bold mb-3 hover:bg-[#4752C4] active:scale-95 transition-all">
+            <i class="fab fa-discord text-xl"></i> Discord
+        </button>
+
+        <button onclick="login('github')" class="w-full flex items-center justify-center gap-3 bg-[#24292f] text-white py-4 rounded-2xl font-bold mb-6 hover:bg-black active:scale-95 transition-all">
+            <i class="fab fa-github text-xl"></i> GitHub
+        </button>
+
+        <button onclick="toggleAuthModal()" class="text-slate-400 text-xs font-black uppercase tracking-widest">Maybe Later</button>
     </div>
+</div>
 
     <script>
         const { Client, Account } = Appwrite;
@@ -85,10 +92,19 @@
         }
 
         function login(provider) {
-            // Using window.location.origin to fix the "success" redirect error on phone
-            const redirect = window.location.origin + window.location.pathname;
-            account.createOAuth2Session(provider, redirect, redirect);
-        }
+    // Force the exact URL to prevent URI mismatch errors
+    const rootUrl = 'https://freshy-store.vercel.app'; 
+    
+    try {
+        account.createOAuth2Session(
+            provider, 
+            rootUrl, // Success
+            rootUrl  // Failure
+        );
+    } catch (err) {
+        alert("Login Error: " + err.message);
+    }
+}
 
         async function logout() { await account.deleteSession('current'); window.location.reload(); }
         function toggleAuthModal() { document.getElementById('authModal').classList.toggle('active'); }
